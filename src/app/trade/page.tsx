@@ -22,8 +22,7 @@ import { ConnectWallet } from "@/components/ConnectWallet";
 import { AddRobinhoodNetwork } from "@/components/AddRobinhoodNetwork";
 import { UsdcFaucetCard } from "@/components/UsdcFaucetCard";
 import { AGENTS, type Agent } from "@/lib/agents";
-import { TEST_USDC_ABI } from "@/lib/broker-abi";
-import { AGENT_TRADING_VAULT_ABI } from "@/lib/broker-abi";
+import { TEST_USDC_ABI, AGENT_BROKER_ABI } from "@/lib/broker-abi";
 import { usdToUsdc } from "@/lib/fractional";
 
 const PRESET_USD = [50, 100, 200, 300];
@@ -73,7 +72,7 @@ export default function TradePage() {
       pendingDepositRef.current = false;
       writeDeposit({
         address: vaultAddress,
-        abi: AGENT_TRADING_VAULT_ABI,
+        abi: AGENT_BROKER_ABI,
         functionName: "depositUsdc",
         args: [usdcAmount],
       });
@@ -101,7 +100,7 @@ export default function TradePage() {
   const handleDepositAndLaunch = () => {
     setError(null);
     if (!vaultAddress || !usdcAddress) {
-      setError("Trading vault not ready. Deploy vault & refresh.");
+      setError("Broker not ready. Please refresh the page.");
       return;
     }
     if (!walletUsdc || walletUsdc < usdcAmount) {
@@ -212,7 +211,7 @@ export default function TradePage() {
           <div>
             <h1 className="font-serif text-4xl">How much to trade?</h1>
             <p className="mt-2 text-muted">
-              Deposit tUSDC (1 tUSDC = $1) into the agent vault. Agents research, debate, then swap via Uniswap pools.
+              Deposit tUSDC (1 tUSDC = $1) into the AgentBroker. Agents research, debate, then buy crypto tokens on BOT Chain testnet.
             </p>
 
             <div className="mt-6 rounded-xl border border-card-border bg-card px-4 py-3 text-sm">

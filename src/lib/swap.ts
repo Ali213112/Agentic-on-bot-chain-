@@ -23,7 +23,7 @@ import {
   UNISWAP_V2_ROUTER_ABI,
   VAULT_SWAP_ABI,
 } from "./uniswap";
-import { getVaultAddress, getUsdcAddress, readDeployed } from "./deployed";
+import { getVaultAddress, getUsdcAddress, readDeployed, getBrokerAddress } from "./deployed";
 
 const chain = {
   id: CHAIN_CONFIG.chainId,
@@ -68,7 +68,8 @@ function buildSwapPath(tokenOut: Address): Address[] {
 }
 
 export async function getSwapStatus() {
-  const vault = getVaultAddress();
+  // Use brokerAddress as vaultAddress — AgentBroker handles deposits + trades
+  const vault = getBrokerAddress() ?? getVaultAddress();
   const usdc = getUsdcAddress();
   const deployed = readDeployed();
   const { publicClient, account } = getClients();
@@ -123,12 +124,12 @@ export async function getSwapStatus() {
 }
 
 export async function getUserVaultUsdc(userAddress: Address): Promise<bigint> {
-  const vault = getVaultAddress();
-  if (!vault) return BigInt(0);
+  const broker = getBrokerAddress();
+  if (!broker) return BigInt(0);
   const { publicClient } = getClients();
   return publicClient.readContract({
-    address: vault,
-    abi: AGENT_TRADING_VAULT_ABI,
+    address: broker,
+    abi: [{ inputs: [{ name: "", type: "address" }], name: "usdcBalance", outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" }],
     functionName: "usdcBalance",
     args: [userAddress],
   });
@@ -275,88 +276,22 @@ export async function executeAllocationSwaps(
   allocation: Allocation[],
   sessionBudgetUsd?: number
 ): Promise<SwapResult[]> {
-  const results: SwapResult[] = [];
-  const vault = getVaultAddress();
-  const deployed = readDeployed();
-  const poolAddress = deployed.poolAddress as Address | undefined;
+  // Delegate to broker's fractional buy system — no vault/Uniswap needed
+  const { executeFractionalBuys } = await import("./broker");
+  const buyResults = await executeFractionalBuys(userAddress, allocation);
 
-  if (!vault) {
-    return [{ symbol: "—", status: "failed", message: "Vault not deployed" }];
-  }
-
-  const userBalance = await getUserVaultUsdc(userAddress);
-  const budgetCap = sessionBudgetUsd ? usdToUsdc(sessionBudgetUsd) : userBalance;
-  let spendable = userBalance < budgetCap ? userBalance : budgetCap;
-
-  if (spendable <= BigInt(0)) {
-    return [
-      {
-        symbol: "—",
-        status: "failed",
-        message: "No tUSDC in vault. Deposit on trade page first.",
-      },
-    ];
-  }
-
-  const { prices } = await getAllPrices();
-  const priceMap = Object.fromEntries(prices.map((p) => [p.symbol, p]));
-
-  for (const item of allocation) {
-    const token = getTradeTokenServer(item.symbol);
-    if (!token) {
-      results.push({
-        symbol: item.symbol,
-        status: "skipped",
-        message: `${item.symbol} not in trade registry`,
-      });
-      continue;
-    }
-
-    const quote = priceMap[item.symbol];
-    if (!quote?.price) {
-      results.push({ symbol: item.symbol, status: "skipped", message: "No Finnhub price" });
-      continue;
-    }
-
-    const target = usdToUsdc(item.amount);
-    const usdcBudget = target > spendable ? spendable : target;
-    spendable -= usdcBudget;
-
-    const purchase = computeFractionalPurchaseUsdc(usdcBudget, quote.price);
-    if (!purchase || purchase.usdcCost <= BigInt(0)) {
-      results.push({
-        symbol: item.symbol,
-        status: "skipped",
-        message: `Budget too small for ${item.symbol}`,
-      });
-      continue;
-    }
-
-    try {
-      const result = poolAddress
-        ? await swapViaSimplePool(
-            userAddress,
-            token.tokenAddress,
-            item.symbol,
-            purchase.usdcCost,
-            poolAddress,
-            quote.price
-          )
-        : await swapViaUniswap(
-            userAddress,
-            token.tokenAddress,
-            item.symbol,
-            purchase.usdcCost
-          );
-      results.push(result);
-    } catch (e) {
-      results.push({
-        symbol: item.symbol,
-        status: "failed",
-        message: e instanceof Error ? e.message : "Swap failed",
-      });
-    }
-  }
-
-  return results;
+  // Map BuyResult → SwapResult shape for session page compatibility
+  return buyResults.map((r) => ({
+    symbol: r.symbol,
+    status: r.status === "bought" ? ("swapped" as const)
+          : r.status === "skipped" ? ("skipped" as const)
+          : ("failed" as const),
+    message: r.message,
+    usdcIn: r.usdcCost,
+    tokensOut: r.shares,
+    txHash: r.txHash,
+    explorerUrl: r.explorerUrl,
+    via: "simple-pool" as const,
+  }));
 }
+
