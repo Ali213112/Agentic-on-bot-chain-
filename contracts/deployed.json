@@ -1,0 +1,10 @@
+{
+  "usdcToken": "0x5a85530bb68168fd8b3cab69594878b4cb95d4be",
+  "faucetAddress": "0x2109d8da4d659f82147b251a5e9b90c3735dbb29",
+  "brokerAddress": "0x3883889390ce6f7c1f9f8a47ef329b8e402f275b",
+  "btcToken": "0xa85468f30291d6a77cf0ff66eba0635b67273555",
+  "ethToken": "0xacf22fdac022bd1d33af0d0c40f48dc646c73b81",
+  "solToken": "0x6175bcadb6463912fd914cab4b3659a0b6901867",
+  "xrpToken": "0x1ca45d3af2f98b3e05457caca41cee83db68667f",
+  "bnbToken": "0xf248d4c77d81e24da2f08dcdbf2ac4766faf27a6"
+}
