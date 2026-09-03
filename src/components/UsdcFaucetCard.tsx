@@ -54,7 +54,7 @@ export function UsdcFaucetCard({ onClaimed }: { onClaimed?: () => void }) {
     return () => clearInterval(id);
   }, [refreshStatus]);
 
-  const { data: canClaimData } = useReadContract({
+  const { data: canClaimData, isLoading: loadingCanClaim, refetch: refetchCanClaim } = useReadContract({
     address: faucetAddress ?? undefined,
     abi: USDC_FAUCET_ABI,
     functionName: "canClaim",
@@ -76,12 +76,16 @@ export function UsdcFaucetCard({ onClaimed }: { onClaimed?: () => void }) {
   useEffect(() => {
     if (isSuccess) {
       refreshStatus();
+      refetchCanClaim();
       onClaimed?.();
     }
-  }, [isSuccess, refreshStatus, onClaimed]);
+  }, [isSuccess, refreshStatus, refetchCanClaim, onClaimed]);
 
-  const ready = canClaimData?.[0] ?? false;
+  // If read hasn't returned yet, default to true — the contract will revert if
+  // the user actually can't claim, which is safer than falsely blocking new users.
+  const ready = canClaimData ? canClaimData[0] : true;
   const poolEmpty = poolUsd === "0.00";
+  const hasClaimedBefore = canClaimData ? Number(canClaimData[1]) > 86400 : false;
 
   if (!isConnected) {
     return (
@@ -145,7 +149,7 @@ export function UsdcFaucetCard({ onClaimed }: { onClaimed?: () => void }) {
             functionName: "claim",
           });
         }}
-        disabled={!faucetAddress || !ready || isPending || confirming || poolEmpty}
+        disabled={!faucetAddress || isPending || confirming || poolEmpty || (!ready && hasClaimedBefore)}
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3 text-sm font-semibold text-black disabled:opacity-40"
       >
         {isPending || confirming ? (
@@ -153,12 +157,17 @@ export function UsdcFaucetCard({ onClaimed }: { onClaimed?: () => void }) {
             <Loader2 size={16} className="animate-spin" />
             Claiming {FAUCET_CLAIM_USD} USDC…
           </>
-        ) : ready ? (
-          <>Get {FAUCET_CLAIM_USD} test USDC</>
+        ) : loadingCanClaim ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            Checking eligibility…
+          </>
         ) : poolEmpty ? (
           <>Faucet pool empty</>
-        ) : (
+        ) : !ready && hasClaimedBefore ? (
           <>Wait 24h for next claim</>
+        ) : (
+          <>Get {FAUCET_CLAIM_USD} test USDC</>
         )}
       </button>
     </div>
